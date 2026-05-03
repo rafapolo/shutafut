@@ -1,5 +1,5 @@
 {
-  "name": "israel",
+  "name": "shutafut",
   "type": "module",
   "dependencies": {
     "@duckdb/node-api": "^1.5.2-r.1",

@@ -69,6 +69,13 @@ class FastNetworkVisualization {
       79: "Titular Pessoa Jurídica Domiciliada no Exterior"
     };
 
+    this.situacaoClass = { Ativa: 'conn-sit-ativa', Baixada: 'conn-sit-baixada', Inapta: 'conn-sit-inapta', Suspensa: 'conn-sit-suspensa' };
+    this.situacaoColor = { Ativa: '#00c853', Baixada: '#ff5050', Inapta: '#ff9800', Suspensa: '#ffc107' };
+    this.nodeTypeColor = { company: '#00c853', israeli_company: '#0038b8', israeli_socio: '#7eb8f7', socio: '#ffd600' };
+
+    this.loadingEl = null;
+    this.zoom = null;
+
     this.simulationParams = {
       linkDistance: 145, chargeStrength: -500, linkStrength: 0.1, alphaDecay: 0.02
     };
@@ -109,11 +116,11 @@ class FastNetworkVisualization {
       this.searchNodes('');
     });
 
-    const zoom = d3.zoom()
+    this.zoom = d3.zoom()
       .scaleExtent([0.03, 10])
       .on('zoom', (event) => { this.transform = event.transform; this.redraw(); });
 
-    d3.select(this.canvas).call(zoom);
+    d3.select(this.canvas).call(this.zoom);
 
     this.canvas.addEventListener('click', (event) => {
       if (!this.data) return;
@@ -132,7 +139,7 @@ class FastNetworkVisualization {
     });
 
     d3.select(this.canvas).call(
-      zoom.transform,
+      this.zoom.transform,
       d3.zoomIdentity.translate(this.width / 2, this.height / 2).scale(0.5)
     );
 
@@ -157,11 +164,31 @@ class FastNetworkVisualization {
   // ── Data loading ──────────────────────────────────────────────────────────
 
   async loadNetwork() {
-    this.showLoading(true);
+    this.showLoading(true, 'Carregando rede israelense…');
     try {
       const response = await fetch('output/network_israel.json');
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
-      this.data = await response.json();
+      const total = parseInt(response.headers.get('content-length') || '0');
+      if (total && response.body) {
+        const reader = response.body.getReader();
+        const chunks = [];
+        let received = 0;
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          chunks.push(value);
+          received += value.length;
+          this.showLoading(true, `Carregando… ${Math.round(received / total * 100)}%`);
+        }
+        const buf = new Uint8Array(received);
+        let offset = 0;
+        for (const chunk of chunks) { buf.set(chunk, offset); offset += chunk.length; }
+        this.data = JSON.parse(new TextDecoder().decode(buf));
+      } else {
+        this.data = await response.json();
+      }
+      this.paisMap = this.data.paisMap ?? this.paisMap;
+      this.qualificacaoSocioMap = this.data.qualificacaoSocioMap ?? this.qualificacaoSocioMap;
       console.log('Loaded:', this.data.nodes.length, 'nodes,', this.data.links.length, 'links');
       this.processData();
       this.initializeSimulation();
@@ -464,9 +491,9 @@ class FastNetworkVisualization {
 
       if (this.selectedNode) {
         if (node.id === this.selectedNode.id) {
-          fillStyle = '#ffff00'; radius = node.radius * 1.8;
-          strokeStyle = '#ffffff'; strokeWidth = Math.max(1, 2 / this.transform.k);
-          this.context.shadowColor = '#ffff00'; this.context.shadowBlur = 15;
+          radius = node.radius * 1.8;
+          strokeStyle = '#ffffff'; strokeWidth = Math.max(1, 3 / this.transform.k);
+          this.context.shadowColor = '#ffffff'; this.context.shadowBlur = 15;
         } else if (this.isConnectedToSelected(node)) {
           fillStyle = '#00ff88'; radius = node.radius * 1.4;
           strokeStyle = '#ffffff'; strokeWidth = Math.max(1, 2 / this.transform.k);
@@ -546,7 +573,7 @@ class FastNetworkVisualization {
       let lineWidth = Math.max(2, 4 / zoom);
 
       if (this.selectedNode) {
-        if (node.id === this.selectedNode.id)     { fillStyle = '#ffff00'; lineWidth = Math.max(3, 5 / zoom); }
+        if (node.id === this.selectedNode.id)     { lineWidth = Math.max(3, 5 / zoom); }
         else if (this.isConnectedToSelected(node)) { fillStyle = '#00ff88'; }
       }
 
@@ -586,10 +613,10 @@ class FastNetworkVisualization {
 
     this.data.links.forEach(link => {
       if (!link.qualificacao_socio && link.qualificacao_socio !== 0) return;
+      const s = typeof link.source === 'object' ? link.source.id : link.source;
+      const t = typeof link.target === 'object' ? link.target.id : link.target;
       let show = showAll;
       if (this.selectedNode && !showAll) {
-        const s = typeof link.source === 'object' ? link.source.id : link.source;
-        const t = typeof link.target === 'object' ? link.target.id : link.target;
         show = s === this.selectedNode.id || t === this.selectedNode.id;
       }
       if (!show) return;
@@ -604,16 +631,12 @@ class FastNetworkVisualization {
       const maxLen = Math.max(10, 20 - (2 - this.transform.k) * 5);
       const text = desc.length > maxLen ? desc.substring(0, maxLen) + '…' : desc;
 
-      const s = typeof link.source === 'object' ? link.source.id : link.source;
-      const t = typeof link.target === 'object' ? link.target.id : link.target;
       this.context.fillStyle = this.selectedNode && (s === this.selectedNode.id || t === this.selectedNode.id) ? '#00ff88' : '#cccccc';
       this.context.strokeStyle = '#000000';
       this.context.strokeText(text, midX + Math.sin(angle) * off, midY - Math.cos(angle) * off);
       this.context.fillText(text, midX + Math.sin(angle) * off, midY - Math.cos(angle) * off);
     });
   }
-
-  // ── Node selection ────────────────────────────────────────────────────────
 
   // ── URL sharing ───────────────────────────────────────────────────────────
 
@@ -731,10 +754,18 @@ class FastNetworkVisualization {
             qualLabel = this.getQualificacaoDescription(qCode);
           }
         }
-        const dotColor = { company: '#00c853', israeli_company: '#0038b8', israeli_socio: '#7eb8f7', socio: '#ffd600' }[cn.type] || '#888';
-        const sub = (cn.type === 'company' || cn.type === 'israeli_company') ? [cn.uf, cn.situacao].filter(Boolean).join(' · ') : '';
-        const subHtml = sub ? `<span class="conn-sub">${sub}</span>` : '';
-        return `<li class="${itemClass}" data-node-id="${cn.id}"><span class="conn-dot" style="background:${dotColor}"></span><span class="conn-body"><span class="conn-label">${cn.label}</span>${subHtml}${qualLabel ? `<span class="conn-qual">${qualLabel}</span>` : ''}</span><span class="conn-count">${count}</span></li>`;
+        const dotColor = this.nodeTypeColor[cn.type] || '#888';
+        let subHtml = '';
+        let labelStyle = '';
+        if (cn.type === 'company' || cn.type === 'israeli_company') {
+          const sit = cn.situacao;
+          const sitClass = this.situacaoClass[sit] || (sit && sit !== '—' ? 'conn-sit-desconhecida' : '');
+          const ufSpan = (cn.uf && cn.uf !== 'EX') ? `<span>${cn.uf}</span>` : '';
+          const sitBadge = (sit && sit !== '—') ? `<span class="conn-sit ${sitClass}">${sit}</span>` : '';
+          if (ufSpan || sitBadge) subHtml = `<span class="conn-sub">${ufSpan}${sitBadge}</span>`;
+          if (this.situacaoColor[sit]) labelStyle = ` style="color:${this.situacaoColor[sit]}"`;
+        }
+        return `<li class="${itemClass}" data-node-id="${cn.id}"><span class="conn-dot" style="background:${dotColor}"></span><span class="conn-body"><span class="conn-label"${labelStyle}>${cn.label}</span>${subHtml}${qualLabel ? `<span class="conn-qual">${qualLabel}</span>` : ''}</span><span class="conn-count">${count}</span></li>`;
       }).join('');
 
       connectionsHtml = `
@@ -775,7 +806,7 @@ class FastNetworkVisualization {
     if (node.x != null) {
       const scale = Math.max(1, this.transform.k);
       d3.select(this.canvas).transition().duration(500).call(
-        d3.zoom().transform,
+        this.zoom.transform,
         d3.zoomIdentity.translate(this.width / 2 - node.x * scale, this.height / 2 - node.y * scale).scale(scale)
       );
     }
@@ -823,7 +854,7 @@ class FastNetworkVisualization {
     if (first) {
       const scale = 1.5;
       d3.select(this.canvas).transition().duration(750).call(
-        d3.zoom().transform,
+        this.zoom.transform,
         d3.zoomIdentity.translate(this.width/2 - first.x*scale, this.height/2 - first.y*scale).scale(scale)
       );
     }
@@ -849,7 +880,11 @@ class FastNetworkVisualization {
 
   }
 
-  showLoading(show) { document.getElementById('loading').style.display = show ? 'block' : 'none'; }
+  showLoading(show, msg) {
+    const el = this.loadingEl ??= document.getElementById('loading');
+    el.style.display = show ? 'block' : 'none';
+    if (show && msg) el.textContent = msg;
+  }
 }
 
 document.addEventListener('DOMContentLoaded', () => {
