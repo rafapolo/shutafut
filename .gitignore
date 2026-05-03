@@ -1,0 +1,4 @@
+node_modules/
+output/
+*.duckdb
+.DS_Store
