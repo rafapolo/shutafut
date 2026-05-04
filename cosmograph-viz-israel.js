@@ -335,7 +335,12 @@ class FastNetworkVisualization {
 
     listEl.querySelectorAll('.cnae-item').forEach(item => {
       item.addEventListener('click', () => {
-        item.classList.toggle('cnae-disabled');
+        if (this.activeCnaes === null) {
+          listEl.querySelectorAll('.cnae-item').forEach(i => i.classList.add('cnae-disabled'));
+          item.classList.remove('cnae-disabled');
+        } else {
+          item.classList.toggle('cnae-disabled');
+        }
         this.applyFilter();
       });
     });
