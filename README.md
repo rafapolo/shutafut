@@ -5,11 +5,11 @@
 
 Visualização interativa da rede de empresas e sócios israelenses no brasil, com base nos dados públicos do CNPJ federal.
 
-**[→ Abrir visualização](https://rafapolo.github.io/shutafut)**
-
 <div align="center">
     <img src="demo.jpg" alt="demo" width="1000px"/>
 </div>
+
+→ [Navegar](https://rafapolo.github.io/shutafut)
 
 ---
 
@@ -36,6 +36,31 @@ Arestas representam vínculos societários. Empresas registradas como sócias de
 Clique em qualquer nó para ver detalhes, conexões e situação cadastral. A URL reflete o nó selecionado e pode ser compartilhada.
 
 ---
+
+## Funcionalidades
+
+ Filtros (painel esquerdo)
+  - Busca por nome de nó (empresa/pessoa) com botão limpar
+  - Filtro de situação da empresa por chips coloridos: Ativa, Baixada, Inapta, Suspensa
+  - Filtro de CNAE (atividade econômica) com busca por texto, "nenhum" e "todos"
+
+  Timeline de ano (barra inferior)
+  - Slider "até ano X" — mostra empresas fundadas até aquele ano
+  - Botão de modo exato "em ano X" — mostra só empresas fundadas naquele ano
+  - Exibe "todos" quando no máximo
+
+  Grafo
+  - Clique em nó abre painel direito com detalhes (nome, UF, CNAE, situação, sócios)
+  - Botão copiar deeplink do nó (?node=...)
+  - Link de nó via URL carrega o grafo já focado naquele nó
+  - Filtro de legenda por tipo (pessoa física, empresa, empresa israelense, etc.)
+  - Botão "destacar arestas" (☀) aumenta opacidade das conexões
+
+  Layout / painéis
+  - Painel esquerdo colapsável (tab ‹)
+  - Painel direito (info do nó) colapsável (tab ›)
+  - Resize drag nas bordas dos painéis
+  - No mobile: botão ⚙ abre/fecha painel esquerdo como overlay
 
 ## Rodar localmente
 
@@ -64,3 +89,4 @@ Os dados públicos do CNPJ estão disponíveis em [dados.gov.br](https://dados.g
 
 - Cadastro Nacional de Pessoas Jurídicas (CNPJ) — Receita Federal do Brasil
 - Código de país `383` identifica Israel no padrão ISO adotado pela Receita
+- Dados atualizados em Abril de 2026
