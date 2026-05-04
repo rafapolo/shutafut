@@ -13,6 +13,25 @@ Visualização interativa da rede de empresas e sócios israelenses no brasil, c
 
 ---
 
+## Stats
+
+| Category                                  | Count |
+|------------------------------------------|------:|
+| Sócios brasileiros (pessoas físicas)     |   586 |
+| Sócios israelenses (pessoas físicas)     |   267 |
+| Empresas brasileiras                     |   391 |
+| Empresas israelenses                    |   394 |
+
+## Top Atividades Econômicas
+
+| # | CNAE     | Atividade                                           | Empresas | %     |
+|--:|----------|-----------------------------------------------------|--------:|------:|
+| 1 | 6462000  | Holdings de instituições não-financeiras            |      44 | 11.3% |
+| 2 | 6810202  | Aluguel de imóveis próprios                         |      17 | 4.3%  |
+| 3 | 6203100  | Desenvolvimento e licenciamento de software         |      17 | 4.3%  |
+| 4 | 6810201  | Compra e venda de imóveis próprios                  |      12 | 3.1%  |
+| 5 | 7020400  | Consultoria em gestão empresarial                   |      10 | 2.6%  |
+
 ## O que mostra
 
 | Nó | Cor | Descrição |
@@ -61,6 +80,8 @@ Clique em qualquer nó para ver detalhes, conexões e situação cadastral. A UR
   - Painel direito (info do nó) colapsável (tab ›)
   - Resize drag nas bordas dos painéis
   - No mobile: botão ⚙ abre/fecha painel esquerdo como overlay
+
+---
 
 ## Rodar localmente
 
