@@ -183,12 +183,25 @@ body {
 .sit-chip-off {
     opacity: 0.22;
 }
+.sit-chip-empty {
+    opacity: 0.35;
+}
+.sit-chip-off.sit-chip-empty {
+    opacity: 0.18;
+}
+
+.cnae-empty {
+    padding: 12px 4px;
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.45);
+}
 
 .sit-chip-ativa,    .conn-sit-ativa      { background: rgba(0, 200, 83, 0.12);   border-color: rgba(0, 200, 83, 0.45);   color: #00c853; }
 .sit-chip-baixada,  .conn-sit-baixada    { background: rgba(255, 80, 80, 0.12);  border-color: rgba(255, 80, 80, 0.45);  color: #ff5050; }
 .sit-chip-inapta,   .conn-sit-inapta     { background: rgba(255, 152, 0, 0.12);  border-color: rgba(255, 152, 0, 0.45);  color: #ff9800; }
 .sit-chip-suspensa, .conn-sit-suspensa   { background: rgba(255, 193, 7, 0.12);  border-color: rgba(255, 193, 7, 0.45);  color: #ffc107; }
-.sit-chip-desconhecida, .conn-sit-desconhecida { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.35); }
+.sit-chip-desconhecida, .conn-sit-desconhecida,
+.sit-chip-nula,         .conn-sit-nula         { background: rgba(255, 255, 255, 0.06); border-color: rgba(255, 255, 255, 0.15); color: rgba(255, 255, 255, 0.35); }
 
 /* ── Panel divider ───────────────────────────────── */
 .panel-divider {

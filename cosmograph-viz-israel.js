@@ -14,6 +14,7 @@ class FastNetworkVisualization {
     this.yearFilter       = null;
     this.yearExact        = false;
     this.activeSituacoes  = null;
+    this.cnaeView         = false;
 
     this.paisMap = {
       76: 'Brasil', 105: 'EUA', 158: 'Reino Unido', 161: 'Rússia',
@@ -69,7 +70,7 @@ class FastNetworkVisualization {
       79: "Titular Pessoa Jurídica Domiciliada no Exterior"
     };
 
-    this.situacaoClass = { Ativa: 'conn-sit-ativa', Baixada: 'conn-sit-baixada', Inapta: 'conn-sit-inapta', Suspensa: 'conn-sit-suspensa' };
+    this.situacaoClass = { Ativa: 'conn-sit-ativa', Baixada: 'conn-sit-baixada', Inapta: 'conn-sit-inapta', Suspensa: 'conn-sit-suspensa', Nula: 'conn-sit-nula' };
     this.situacaoColor = { Ativa: '#00c853', Baixada: '#ff5050', Inapta: '#ff9800', Suspensa: '#ffc107' };
     this.nodeTypeColor = { company: '#00c853', israeli_company: '#0038b8', israeli_socio: '#7eb8f7', socio: '#ffd600' };
 
@@ -235,7 +236,7 @@ class FastNetworkVisualization {
         counts.set(s, (counts.get(s) || 0) + 1);
       });
 
-    const order = ['Ativa', 'Baixada', 'Inapta', 'Suspensa', '—'];
+    const order = ['Ativa', 'Baixada', 'Inapta', 'Suspensa', 'Nula', '—'];
     const container = document.getElementById('situacaoChips');
     container.innerHTML = '';
 
@@ -248,6 +249,30 @@ class FastNetworkVisualization {
       chip.addEventListener('click', () => this.toggleSituacaoFilter(sit));
       container.appendChild(chip);
     });
+  }
+
+  // Recount the situação chips against every other active filter (CNAE, tipo, ano),
+  // ignoring the situação filter itself so toggling a chip never zeroes the others.
+  updateSituacaoCounts() {
+    const counts = new Map();
+    this.data.nodes.forEach(n => {
+      if (!this.isCompanyVisible(n, { ignoreSituacao: true })) return;
+      const s = n.situacao || '—';
+      counts.set(s, (counts.get(s) || 0) + 1);
+    });
+    document.querySelectorAll('#situacaoChips .sit-chip').forEach(chip => {
+      const sit = chip.dataset.sit;
+      const c = counts.get(sit) || 0;
+      chip.textContent = `${sit} ${c.toLocaleString()}`;
+      chip.classList.toggle('sit-chip-empty', c === 0);
+    });
+  }
+
+  // Called whenever any filter changes: keeps chip counts and the CNAE company
+  // listing in sync with the current selection.
+  refreshFacets() {
+    this.updateSituacaoCounts();
+    if (this.cnaeView) this.showCnaeCompanies();
   }
 
   toggleSituacaoFilter(sit) {
@@ -264,6 +289,7 @@ class FastNetworkVisualization {
     document.querySelectorAll('#situacaoChips .sit-chip').forEach(chip => {
       chip.classList.toggle('sit-chip-off', this.activeSituacoes != null && !this.activeSituacoes.has(chip.dataset.sit));
     });
+    this.refreshFacets();
     this.redraw();
   }
 
@@ -297,6 +323,7 @@ class FastNetworkVisualization {
 
     slider.addEventListener('input', () => {
       updateLabel(parseInt(slider.value));
+      this.refreshFacets();
       this.redraw();
     });
 
@@ -305,6 +332,7 @@ class FastNetworkVisualization {
       this.yearExact = !this.yearExact;
       exactBtn.classList.toggle('active', this.yearExact);
       updateLabel(parseInt(slider.value));
+      this.refreshFacets();
       this.redraw();
     });
   }
@@ -369,10 +397,75 @@ class FastNetworkVisualization {
     else {
       this.activeCnaes = new Set([...document.querySelectorAll('.cnae-item:not(.cnae-disabled)')].map(el => el.dataset.code));
     }
+
+    if (this.activeCnaes === null) {
+      // "todos": nada mais está selecionado, volta o painel ao estado normal
+      if (this.cnaeView) { this.cnaeView = false; this.hideNodeInfo(); }
+    } else {
+      this.cnaeView = true;
+      this.showCnaeCompanies();
+    }
+
+    this.updateSituacaoCounts();
     this.redraw();
   }
 
-  isCompanyVisible(node) {
+  // Lista, no painel direito, todas as empresas dos CNAEs selecionados
+  // (respeitando os demais filtros ativos).
+  showCnaeCompanies() {
+    if (this.selectedNode) this.clearSelection();
+
+    const selected = [...document.querySelectorAll('.cnae-item:not(.cnae-disabled)')]
+      .map(el => ({ code: el.dataset.code, desc: el.title || el.dataset.code }));
+
+    const companies = this.data.nodes
+      .filter(n => this.isCompanyVisible(n))
+      .sort((a, b) => a.label.localeCompare(b.label, 'pt-BR'));
+
+    const header = selected.length === 0
+      ? 'Nenhuma atividade selecionada'
+      : selected.length === 1
+        ? selected[0].desc
+        : `${selected.length} atividades selecionadas`;
+
+    const items = companies.map(cn => {
+      const itemClass = 'connection-item ' + ({ company: 'reag', israeli_company: 'israeli-co' }[cn.type] || 'estendida');
+      const dotColor = this.nodeTypeColor[cn.type] || '#888';
+      const sit = cn.situacao;
+      const sitClass = this.situacaoClass[sit] || (sit && sit !== '—' ? 'conn-sit-desconhecida' : '');
+      const ufSpan = (cn.uf && cn.uf !== 'EX') ? `<span>${cn.uf}</span>` : '';
+      const sitBadge = (sit && sit !== '—') ? `<span class="conn-sit ${sitClass}">${sit}</span>` : '';
+      const subHtml = (ufSpan || sitBadge) ? `<span class="conn-sub">${ufSpan}${sitBadge}</span>` : '';
+      const labelStyle = this.situacaoColor[sit] ? ` style="color:${this.situacaoColor[sit]}"` : '';
+      const links = this.data.links.filter(l => {
+        const s = typeof l.source === 'object' ? l.source.id : l.source;
+        const t = typeof l.target === 'object' ? l.target.id : l.target;
+        return s === cn.id || t === cn.id;
+      }).length;
+      return `<li class="${itemClass}" data-node-id="${cn.id}"><span class="conn-dot" style="background:${dotColor}"></span><span class="conn-body"><span class="conn-label"${labelStyle}>${cn.label}</span>${subHtml}</span><span class="conn-count">${links}</span></li>`;
+    }).join('');
+
+    document.getElementById('nodeInfo').style.display = 'flex';
+    if (window.onNodeInfoToggle) window.onNodeInfoToggle(true);
+    document.getElementById('nodeInfoTitle').textContent = 'Empresas por Atividade';
+    document.getElementById('nodeInfoContent').innerHTML = `
+      <div class="node-details">
+        <div class="node-name">${header}</div>
+      </div>
+      <div class="connections-section">
+        <div class="connections-header">Empresas <span class="connection-count">${companies.length}</span></div>
+        ${companies.length ? `<ul class="connections-list">${items}</ul>` : '<div class="cnae-empty">Nenhuma empresa com os filtros atuais.</div>'}
+      </div>`;
+
+    document.querySelectorAll('#nodeInfoContent .connection-item[data-node-id]').forEach(item => {
+      item.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.selectNodeById(Number(item.getAttribute('data-node-id')));
+      });
+    });
+  }
+
+  isCompanyVisible(node, { ignoreSituacao = false } = {}) {
     if (node.type !== 'company' && node.type !== 'israeli_company') return false;
     if (this.activeTypes && !this.activeTypes.has(node.type)) return false;
     if (this.yearFilter) {
@@ -384,7 +477,7 @@ class FastNetworkVisualization {
       }
     }
     if (this.activeCnaes && !this.activeCnaes.has(String(node.cnae_code))) return false;
-    if (this.activeSituacoes && !this.activeSituacoes.has(node.situacao || '—')) return false;
+    if (!ignoreSituacao && this.activeSituacoes && !this.activeSituacoes.has(node.situacao || '—')) return false;
     return true;
   }
 
@@ -397,6 +490,7 @@ class FastNetworkVisualization {
       if (s.has(type)) s.delete(type); else s.add(type);
       this.activeTypes = s.size === allTypes.size ? null : s;
     }
+    this.refreshFacets();
     this.redraw();
   }
 
@@ -780,8 +874,10 @@ class FastNetworkVisualization {
         </div>`;
     }
 
+    this.cnaeView = false;
     document.getElementById('nodeInfo').style.display = 'flex';
     if (window.onNodeInfoToggle) window.onNodeInfoToggle(true);
+    document.getElementById('nodeInfoTitle').textContent = 'Informações do Nó';
     document.getElementById('nodeInfoContent').innerHTML = `
       <div class="node-details">
         <div class="node-name">${node.label}</div>
@@ -800,7 +896,9 @@ class FastNetworkVisualization {
   }
 
   hideNodeInfo() {
+    this.cnaeView = false;
     document.getElementById('nodeInfo').style.display = 'none';
+    document.getElementById('nodeInfoTitle').textContent = 'Informações do Nó';
     if (window.onNodeInfoToggle) window.onNodeInfoToggle(false);
   }
 
