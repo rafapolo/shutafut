@@ -408,23 +408,42 @@ body {
 }
 
 /* ── Canvas ──────────────────────────────────────── */
+
+/* Os dois estados do fundo são o MESMO gradiente, variando só os color-stops.
+   Registrar as variáveis com @property é o que permite interpolá-las: um
+   background-image não é transicionável, e como o gradiente é opaco ele
+   esconde o background-color — transicionar a cor por baixo não aparece, e o
+   toggle ficava com fade ao ligar e corte seco ao desligar. */
+@property --bg-centro {
+    syntax: '<color>';
+    inherits: false;
+    initial-value: #0a1628;
+}
+@property --bg-borda {
+    syntax: '<color>';
+    inherits: false;
+    initial-value: #060c14;
+}
+
 #network-canvas {
     width: 100vw;
     height: 100vh;
     display: block;
-    background-color: #060c14;
-    background-image: radial-gradient(circle at 50% 50%, #0a1628, #060c14);
-    transition: background-color 0.35s ease;
+    /* fallbacks para navegador sem @property: perde o fade, mantém as cores */
+    background-color: var(--bg-borda, #060c14);
+    background-image: radial-gradient(circle at 50% 50%,
+        var(--bg-centro, #0a1628), var(--bg-borda, #060c14));
+    transition: --bg-centro 0.35s ease, --bg-borda 0.35s ease;
 }
 
-/* Modo "destacar arestas": fundo plano e sem matiz azul.
-   O gradiente clareia justamente o centro, onde a rede é mais densa e o
+/* Modo "destacar arestas": gradiente degenerado, ou seja, plano e sem matiz
+   azul. O gradiente clareia justamente o centro, onde a rede é mais densa e o
    contraste é mais necessário; e o azul-marinho do fundo (216°) é quase o
    mesmo matiz dos nós de empresa israelense (222°), que somem contra ele.
    Um preto neutro separa por luminância e por matiz ao mesmo tempo. */
 #network-canvas.edges-bright {
-    background-image: none;
-    background-color: #05060a;
+    --bg-centro: #05060a;
+    --bg-borda:  #05060a;
 }
 
 .loading {
