@@ -412,7 +412,19 @@ body {
     width: 100vw;
     height: 100vh;
     display: block;
-    background: radial-gradient(circle at 50% 50%, #0a1628, #060c14);
+    background-color: #060c14;
+    background-image: radial-gradient(circle at 50% 50%, #0a1628, #060c14);
+    transition: background-color 0.35s ease;
+}
+
+/* Modo "destacar arestas": fundo plano e sem matiz azul.
+   O gradiente clareia justamente o centro, onde a rede é mais densa e o
+   contraste é mais necessário; e o azul-marinho do fundo (216°) é quase o
+   mesmo matiz dos nós de empresa israelense (222°), que somem contra ele.
+   Um preto neutro separa por luminância e por matiz ao mesmo tempo. */
+#network-canvas.edges-bright {
+    background-image: none;
+    background-color: #05060a;
 }
 
 .loading {

@@ -153,6 +153,7 @@ class FastNetworkVisualization {
     document.getElementById('edgesBrightBtn').addEventListener('click', () => {
       this.edgesBright = !this.edgesBright;
       document.getElementById('edgesBrightBtn').classList.toggle('active', this.edgesBright);
+      this.canvas.classList.toggle('edges-bright', this.edgesBright);
       this.redraw();
     });
 
