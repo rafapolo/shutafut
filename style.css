@@ -445,7 +445,9 @@ body {
 /* ── Floating buttons ────────────────────────────── */
 .float-btn {
     position: absolute;
-    right: 20px;
+    /* desloca pra esquerda quando o painel direito está aberto — senão o
+       painel (z-index 1000) cobre os botões e eles ficam inclicáveis */
+    right: var(--float-btn-right, 20px);
     width: 42px;
     height: 42px;
     border-radius: 50%;

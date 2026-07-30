@@ -35,7 +35,18 @@ document.getElementById('copyNodeLink').addEventListener('click', () => {
     let rightCollapsed = false;
     let rightVisible   = false;
 
+    // Os botões flutuantes ficam em right:20px, mesma faixa do painel direito.
+    // Com o painel aberto eles somem embaixo dele, então saem da frente.
+    function updateFloatButtons() {
+        const clear = window.innerWidth > 768 && rightVisible && !rightCollapsed;
+        document.documentElement.style.setProperty(
+            '--float-btn-right',
+            (clear ? MARGIN + rightPanel.offsetWidth + 12 : MARGIN) + 'px'
+        );
+    }
+
     function updatePositions() {
+        updateFloatButtons();
         if (window.innerWidth <= 768) return;
 
         const lw = leftPanel.offsetWidth;
