@@ -16,6 +16,12 @@ class FastNetworkVisualization {
     this.activeSituacoes  = null;
     this.cnaeView         = false;
 
+    // Navegação: pilha de "lugares" espelhada em history.state.{navIndex}.
+    // A pilha existe só para saber se há "avançar" — a History API não informa.
+    this.navHistory = [];
+    this.navIndex   = -1;
+    this._replaying = false;
+
     this.paisMap = {
       76: 'Brasil', 105: 'EUA', 158: 'Reino Unido', 161: 'Rússia',
       163: 'El Salvador', 171: 'Suíça', 175: 'Turquia', 181: 'Uruguai',
@@ -105,16 +111,20 @@ class FastNetworkVisualization {
     const searchInput = document.getElementById('searchInput');
     const searchClear = document.getElementById('searchClear');
 
+    let searchUrlTimer = null;
     searchInput.addEventListener('input', (e) => {
       const val = e.target.value.toLowerCase();
       searchClear.style.display = val ? 'flex' : 'none';
       this.searchNodes(val);
+      clearTimeout(searchUrlTimer);
+      searchUrlTimer = setTimeout(() => this.syncFilterURL(), 200);
     });
 
     searchClear.addEventListener('click', () => {
       searchInput.value = '';
       searchClear.style.display = 'none';
       this.searchNodes('');
+      this.syncFilterURL();
     });
 
     this.zoom = d3.zoom()
@@ -135,8 +145,8 @@ class FastNetworkVisualization {
         if (d <= 30 && d < minDist) { clickedNode = node; minDist = d; }
       }
 
-      if (clickedNode) { this.selectNode(clickedNode); this.showNodeInfo(clickedNode); }
-      else { this.clearSelection(); this.hideNodeInfo(); }
+      if (clickedNode) { this.navigateToNode(clickedNode); }
+      else { this.clearSelection(); this.hideNodeInfo(); this.pushNav({ type: 'root' }); }
     });
 
     d3.select(this.canvas).call(
@@ -147,7 +157,17 @@ class FastNetworkVisualization {
     window.addEventListener('resize', () => { this.setupCanvas(); if (this.data) this.redraw(); });
 
     document.getElementById('closeNodeInfo').addEventListener('click', () => {
-      this.hideNodeInfo(); this.clearSelection();
+      this.hideNodeInfo(); this.clearSelection(); this.pushNav({ type: 'root' });
+    });
+
+    // Os botões só chamam back/forward — o popstate faz todo o trabalho, então
+    // pilha e histórico do navegador não têm como dessincronizar.
+    document.getElementById('navBack').addEventListener('click', () => history.back());
+    document.getElementById('navFwd').addEventListener('click', () => history.forward());
+
+    window.addEventListener('popstate', (e) => {
+      if (!this.data) return;
+      this.applyState(e.state?.navIndex ?? -1);
     });
 
     document.getElementById('edgesBrightBtn').addEventListener('click', () => {
@@ -291,6 +311,7 @@ class FastNetworkVisualization {
       chip.classList.toggle('sit-chip-off', this.activeSituacoes != null && !this.activeSituacoes.has(chip.dataset.sit));
     });
     this.refreshFacets();
+    this.syncFilterURL();
     this.redraw();
   }
 
@@ -322,9 +343,18 @@ class FastNetworkVisualization {
       }
     };
 
+    // O evento dispara a cada pixel arrastado — o desenho acompanha, mas a
+    // escrita na URL espera, senão arrastar a barra inteira gera ~74 replaceState.
+    let urlTimer = null;
+    const syncSoon = () => {
+      clearTimeout(urlTimer);
+      urlTimer = setTimeout(() => this.syncFilterURL(), 200);
+    };
+
     slider.addEventListener('input', () => {
       updateLabel(parseInt(slider.value));
       this.refreshFacets();
+      syncSoon();
       this.redraw();
     });
 
@@ -334,6 +364,7 @@ class FastNetworkVisualization {
       exactBtn.classList.toggle('active', this.yearExact);
       updateLabel(parseInt(slider.value));
       this.refreshFacets();
+      this.syncFilterURL();
       this.redraw();
     });
   }
@@ -402,9 +433,11 @@ class FastNetworkVisualization {
     if (this.activeCnaes === null) {
       // "todos": nada mais está selecionado, volta o painel ao estado normal
       if (this.cnaeView) { this.cnaeView = false; this.hideNodeInfo(); }
+      this.pushNav({ type: 'root' });
     } else {
       this.cnaeView = true;
       this.showCnaeCompanies();
+      this.pushNav({ type: 'cnae', cnae: this.encodeCnaes() });
     }
 
     this.updateSituacaoCounts();
@@ -492,6 +525,7 @@ class FastNetworkVisualization {
       this.activeTypes = s.size === allTypes.size ? null : s;
     }
     this.refreshFacets();
+    this.syncFilterURL();
     this.redraw();
   }
 
@@ -756,31 +790,211 @@ class FastNetworkVisualization {
     return null;
   }
 
-  updateURL(node) {
-    const url = new URL(window.location);
-    url.searchParams.set('node', this.getNodeStableId(node));
-    history.replaceState(null, '', url);
-    const copyBtn = document.getElementById('copyNodeLink');
-    if (copyBtn) copyBtn.style.display = 'flex';
+  // ── Navegação / histórico ────────────────────────────────────────────────
+
+  // Códigos de CNAE selecionados. Compacta para não gerar URL de 3 KB:
+  // ausente = todos, 'none' = nenhum, '!a,b' = todos menos esses.
+  encodeCnaes() {
+    if (this.activeCnaes === null) return null;
+    const sel = [...this.activeCnaes];
+    if (sel.length === 0) return 'none';
+    const all = [...document.querySelectorAll('.cnae-item')].map(el => el.dataset.code);
+    if (sel.length > 20) return '!' + all.filter(c => !this.activeCnaes.has(c)).join(',');
+    return sel.join(',');
   }
 
-  clearURL() {
+  // Monta a URL de um estado da pilha, preservando os filtros correntes.
+  stateURL(state) {
     const url = new URL(window.location);
     url.searchParams.delete('node');
-    history.replaceState(null, '', url);
-    const copyBtn = document.getElementById('copyNodeLink');
-    if (copyBtn) copyBtn.style.display = 'none';
+    url.searchParams.delete('cnae');
+    if (state?.type === 'node') url.searchParams.set('node', state.id);
+    if (state?.cnae) url.searchParams.set('cnae', state.cnae);
+    return url;
+  }
+
+  pushNav(state) {
+    if (this._replaying) return;
+    // Toda entrada carrega o CNAE vigente, senão voltar de um estado CNAE para
+    // a raiz fecharia o painel mas deixaria o grafo filtrado.
+    if (state.cnae === undefined) state.cnae = this.encodeCnaes();
+    const current = this.navHistory[this.navIndex];
+    if (current && current.type === state.type && current.cnae === state.cnae) {
+      if (state.type === 'node' && current.id === state.id) return;
+      if (state.type !== 'node') return;
+    }
+    this.navHistory = this.navHistory.slice(0, this.navIndex + 1);
+    this.navHistory.push(state);
+    this.navIndex = this.navHistory.length - 1;
+    history.pushState({ navIndex: this.navIndex }, '', this.stateURL(state));
+    this.updateNavButtons();
+    this.updateCopyBtn();
+  }
+
+  // Replay de uma entrada da pilha. Nada aqui pode empilhar de volta.
+  applyState(index) {
+    this.navIndex = index;
+    const state = this.navHistory[index];
+    this._replaying = true;
+    try {
+      // O filtro de CNAE faz parte de todo estado, então sempre é reaplicado.
+      this.applyCnaeParam(state?.cnae ?? null);
+      this.applyFilter();
+
+      if (!state || state.type === 'root') {
+        this.selectedNode = null;
+        this.cnaeView = false;
+        this.hideNodeInfo();
+      } else if (state.type === 'node') {
+        const node = this.findNodeByStableId(state.id);
+        // Um nó filtrado fora ainda é exibido — voltar nunca deve dar tela vazia.
+        if (node) { this.selectNode(node); this.showNodeInfo(node); this.centerOn(node); }
+      }
+      // type 'cnae': applyFilter acima já abriu o painel da lista
+      this.redraw();
+    } finally {
+      this._replaying = false;
+    }
+    this.updateNavButtons();
+    this.updateCopyBtn();
+  }
+
+  updateNavButtons() {
+    const back = document.getElementById('navBack');
+    const fwd  = document.getElementById('navFwd');
+    if (back) back.disabled = this.navIndex <= 0;
+    if (fwd)  fwd.disabled  = this.navIndex >= this.navHistory.length - 1;
+  }
+
+  updateCopyBtn() {
+    const btn = document.getElementById('copyNodeLink');
+    if (btn) btn.style.display = this.selectedNode || this.cnaeView ? 'flex' : 'none';
+  }
+
+  // Filtros vão para a URL sem criar entrada — são ajustes, não lugares.
+  syncFilterURL() {
+    if (this._replaying) return;
+    const url = new URL(window.location);
+    const set = (k, v) => v ? url.searchParams.set(k, v) : url.searchParams.delete(k);
+    set('sit',  this.activeSituacoes ? [...this.activeSituacoes].join(',') : null);
+    set('tipo', this.activeTypes ? [...this.activeTypes].join(',') : null);
+    set('ano',  this.yearFilter ? String(this.yearFilter) : null);
+    set('anoex', this.yearFilter && this.yearExact ? '1' : null);
+    const q = document.getElementById('searchInput')?.value.trim();
+    set('q', q || null);
+    history.replaceState(history.state, '', url);
+  }
+
+  // ── Restauração a partir da URL ──────────────────────────────────────────
+
+  applyCnaeParam(raw) {
+    const items = [...document.querySelectorAll('.cnae-item')];
+    if (!items.length) return;
+    if (!raw) { items.forEach(i => i.classList.remove('cnae-disabled')); return; }
+    if (raw === 'none') { items.forEach(i => i.classList.add('cnae-disabled')); return; }
+    if (raw.startsWith('!')) {
+      const off = new Set(raw.slice(1).split(',').filter(Boolean));
+      items.forEach(i => i.classList.toggle('cnae-disabled', off.has(i.dataset.code)));
+      return;
+    }
+    const on = new Set(raw.split(',').filter(Boolean));
+    items.forEach(i => i.classList.toggle('cnae-disabled', !on.has(i.dataset.code)));
+  }
+
+  applyFiltersFromURL(p) {
+    const sit = p.get('sit');
+    if (sit) {
+      this.activeSituacoes = new Set(sit.split(',').filter(Boolean));
+      document.querySelectorAll('#situacaoChips .sit-chip').forEach(c => {
+        c.classList.toggle('sit-chip-off', !this.activeSituacoes.has(c.dataset.sit));
+      });
+    }
+    const tipo = p.get('tipo');
+    if (tipo) {
+      this.activeTypes = new Set(tipo.split(',').filter(Boolean));
+      document.querySelectorAll('.legend-item[data-type]').forEach(el => {
+        el.classList.toggle('legend-disabled', !this.activeTypes.has(el.dataset.type));
+      });
+    }
+    const ano = parseInt(p.get('ano'));
+    if (ano) {
+      this.yearFilter = ano;
+      this.yearExact  = p.get('anoex') === '1';
+      const slider = document.getElementById('yearSlider');
+      if (slider) slider.value = ano;
+      const label = document.getElementById('yearValue');
+      if (label) label.textContent = this.yearExact ? `em ${ano}` : `até ${ano}`;
+      document.getElementById('yearExactBtn')?.classList.toggle('active', this.yearExact);
+    }
+    const q = p.get('q');
+    if (q) {
+      const input = document.getElementById('searchInput');
+      if (input) {
+        input.value = q;
+        document.getElementById('searchClear').style.display = 'flex';
+        this.searchNodes(q.toLowerCase());
+      }
+    }
   }
 
   restoreFromURL() {
-    const stableId = new URLSearchParams(window.location.search).get('node');
-    if (!stableId) return;
-    const node = this.findNodeByStableId(stableId);
-    if (node) { this.selectNode(node); this.showNodeInfo(node); }
+    const p = new URLSearchParams(window.location.search);
+    this._replaying = true;
+    try {
+      this.applyFiltersFromURL(p);
+
+      const cnae = p.get('cnae');
+      if (cnae) {
+        this.applyCnaeParam(cnae);
+        this.applyFilter();
+        this.navHistory = [{ type: 'cnae', cnae }];
+        this.navIndex = 0;
+      }
+
+      const stableId = p.get('node');
+      if (stableId) {
+        const node = this.findNodeByStableId(stableId);
+        if (node) {
+          this.selectNode(node);
+          this.showNodeInfo(node);
+          this.navHistory = [{ type: 'node', id: stableId, cnae: cnae || null }];
+          this.navIndex = 0;
+          // A simulação ainda não tem posições no primeiro frame; espera e centraliza.
+          const tryCenter = (tries = 0) => {
+            if (node.x != null) this.centerOn(node, 0.6);
+            else if (tries < 40) setTimeout(() => tryCenter(tries + 1), 100);
+          };
+          setTimeout(tryCenter, 300);
+        }
+      }
+    } finally {
+      this._replaying = false;
+    }
+
+    this.updateSituacaoCounts();
+    this.redraw();
+    history.replaceState({ navIndex: this.navIndex }, '', window.location.href);
+    this.updateNavButtons();
+    this.updateCopyBtn();
   }
 
-  selectNode(node) { this.selectedNode = node; this.updateURL(node); this.redraw(); }
-  clearSelection() { this.selectedNode = null; this.clearURL(); this.redraw(); }
+  selectNode(node) { this.selectedNode = node; this.redraw(); }
+  clearSelection() { this.selectedNode = null; this.redraw(); this.updateCopyBtn(); }
+
+  navigateToNode(node) {
+    this.selectNode(node);
+    this.showNodeInfo(node);
+    this.pushNav({ type: 'node', id: this.getNodeStableId(node) });
+  }
+
+  centerOn(node, forceScale = null) {
+    if (node.x == null) return;
+    const scale = forceScale ?? Math.max(1, this.transform.k);
+    d3.select(this.canvas).transition().duration(500).call(
+      this.zoom.transform,
+      d3.zoomIdentity.translate(this.width / 2 - node.x * scale, this.height / 2 - node.y * scale).scale(scale)
+    );
+  }
 
   showNodeInfo(node) {
     const connectedNodes = [];
@@ -906,14 +1120,8 @@ class FastNetworkVisualization {
   selectNodeById(nodeId) {
     const node = this.data.nodes.find(n => n.id === nodeId);
     if (!node) return;
-    this.selectNode(node); this.showNodeInfo(node);
-    if (node.x != null) {
-      const scale = Math.max(1, this.transform.k);
-      d3.select(this.canvas).transition().duration(500).call(
-        this.zoom.transform,
-        d3.zoomIdentity.translate(this.width / 2 - node.x * scale, this.height / 2 - node.y * scale).scale(scale)
-      );
-    }
+    this.navigateToNode(node);
+    this.centerOn(node);
   }
 
   isConnectedToSelected(node) {

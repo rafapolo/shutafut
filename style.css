@@ -586,6 +586,39 @@ body {
     align-items: center;
 }
 
+.node-nav-btns {
+    display: flex;
+    gap: 2px;
+    align-items: center;
+    margin-right: 8px;
+}
+
+.node-nav-btns button {
+    background: none;
+    border: none;
+    color: rgba(255, 255, 255, 0.6);
+    font-size: 17px;
+    cursor: pointer;
+    padding: 0;
+    width: 26px;
+    height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    transition: all 0.2s;
+}
+
+.node-nav-btns button:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.1);
+    color: #00c853;
+}
+
+.node-nav-btns button:disabled {
+    opacity: 0.25;
+    cursor: default;
+}
+
 #copyNodeLink {
     display: none;
     align-items: center;
